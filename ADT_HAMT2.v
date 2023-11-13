@@ -336,10 +336,39 @@ Set Guard Checking.
       intros. unfold Abs. simpl. trivial.
       Qed.
 
+    Theorem eqb_true : forall (n m : nat),
+      n =? m = true -> n = m.
+    Proof.
+      intros n. induction n.
+      - intros [] eq. reflexivity. discriminate.
+      - intros [] eq.
+        + discriminate.
+        + apply f_equal. apply IHn. apply eq.
+    Qed.
+
+    Theorem beq_nat_sym : forall (n m : nat),
+    beq_nat n m = beq_nat m n.
+     Proof.
+        intro n.
+        induction n as [| n']. 
+        intro m. destruct m as [| m']. 
+        reflexivity.
+        reflexivity. 
+        intro m. destruct m as [| m'].
+        reflexivity.
+        simpl. apply IHn'. 
+    Qed.
+
     Lemma eqNat_refl : forall (n m : nat) (b : bool),
       (n =? m) = b -> (m =? n) = b.
-      Proof. Admitted.  
-
+      Proof.
+      intros m n b H. destruct b.
+      - trivial. rewrite -> eqb_true with (n:=m) (m:=n).
+        * symmetry. apply beq_nat_refl.
+        * apply H.
+      - rewrite -> beq_nat_sym. apply H. 
+    Qed.
+     
     Lemma rep_comm : forall (a : key * HAMT V) (m : list (key * HAMT V)),
     rep_ok (ListNode V (a :: m)) -> rep_ok (ListNode V m).
     Proof. Admitted. 
@@ -347,6 +376,10 @@ Set Guard Checking.
     Lemma rep_comm2 : forall (a : key) (v : V) (m : list (key * V)),
     rep_ok (CollisionNode V ((a, v) :: m)) -> rep_ok (CollisionNode V m).
     Proof. Admitted. 
+
+    Lemma map_comm : forall (a k : key) (v : V) (m : list (key * V)),
+      map_bound k (map_of_list ((a, v) :: m)) = bIn k ((a, v) :: m) -> 
+      map_bound k (map_of_list m) = bIn k m. Proof. Admitted. 
 
   Theorem bound_relate : forall (t : table) (k : key),
       rep_ok t ->
@@ -357,15 +390,25 @@ Set Guard Checking.
     unfold elements. unfold bIn. unfold map_bound. destruct (k0 =? k) eqn :h1.
     * trivial. rewrite -> eqNat_refl with (b:= true). trivial. apply h1.
     * simpl. rewrite -> eqNat_refl with (b:= false). reflexivity. apply h1.
-  - unfold Abs. unfold bound. induction map.
-    * simpl. unfold map_bound. simpl. reflexivity.
-    * destruct a. unfold elements. admit.
+  - unfold Abs. unfold bound. destruct ((elements (ListNode V map))).
+    * simpl. unfold bound. simpl. unfold map_bound. simpl. reflexivity.
+    * induction l. 
+      ** simpl. unfold map_bound. unfold update. unfold t_update. destruct p. destruct (k =? k0) eqn: h1.
+        *** rewrite -> eqNat_refl with (b := true). reflexivity. apply h1.
+        *** rewrite -> eqNat_refl with (b := false). simpl. reflexivity. apply h1.
+      ** simpl. destruct p. unfold map_bound. destruct a. unfold update. unfold t_update.
+      destruct (k0 =? k) eqn :h1. 
+        *** rewrite -> eqNat_refl with (b := true). reflexivity. apply h1.
+        *** assert ((k =? k0) = false). rewrite -> eqNat_refl with (b := false). reflexivity. apply h1.
+        rewrite -> H0. destruct (k1 =? k) eqn :h2. rewrite -> eqNat_refl with (b := true).
+        reflexivity. apply h2. rewrite -> eqNat_refl with (b := false). apply map_comm in IHl.
+        unfold map_bound in IHl. apply IHl. apply h2.              
   - unfold Abs. unfold map_of_list. unfold elements. unfold bound. unfold elements. unfold bIn.
     unfold update. unfold t_update. unfold map_bound. induction hmes.
     * simpl. reflexivity.
     * destruct a. destruct (k =? k0) eqn : h1. rewrite -> eqNat_refl with (b := true). trivial. apply h1.
     rewrite -> eqNat_refl with (b:= false). apply rep_comm2 in H. apply IHhmes in H. apply H. apply h1.
-    Admitted.     
+  Qed.     
 
   Theorem lookup_relate : forall (t : table) (k : key),
       rep_ok t ->
