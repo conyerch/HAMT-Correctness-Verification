@@ -66,15 +66,17 @@ Definition empty_map {V : Type} := @empty V.
     | [] => empty
     | (k, v) :: el' => update (map_of_list el') k v
     end.
+
 From Coq Require Import Arith.
+
 Module Type ExtendedTableAbs.
     Parameter table : Type.
     Definition key := nat.
+    Definition hashKeys := nat.
     Parameter V : Type.
     Parameter default : V.
-    Parameter bitSize : nat.
-    Parameter mask : nat.
-    Parameter hash : key -> list nat. 
+    Parameter keyNumber : nat.
+    Parameter hash : key -> list hashKeys. 
     Parameter empty : table.
     Parameter get : key -> table -> V.
     Parameter set : key -> V -> table -> table.
@@ -108,31 +110,28 @@ Module Type ExtendedTableAbs.
     Parameter V : Type.
     Parameter default : V.
     Parameter hash : nat -> list nat. 
-    Parameter bitSize : nat.
-    Parameter maskSize : nat.
+    Parameter keyNum : nat.
   End ExtendedValType.
   
   Inductive HAMT (V : Type) : Type :=
     | Empty 
     | HashMapEntry (hash : list nat) (k : key) (val : V)
-    | ArrayNode (map : list (key * HAMT V))
+    | ListNode (map : list (key * HAMT V))
     | CollisionNode (hmes : list (key * V)).
   
   Module ExtendedTableHash (VT : ExtendedValType) <: ExtendedTableAbs.
   
     Definition V := VT.V.
     Definition default := VT.default.
-    Definition bitSize := VT.bitSize.
-    Definition mask := VT.maskSize. 
+    Definition keyNumber := VT.keyNum.
     Definition hash := VT.hash. 
     Definition table := HAMT V.
     Definition key := nat. 
+    Definition hashKeys := nat. 
     Definition empty: table := 
       Empty V. 
-
-    Definition minSize : nat := mask + mask.
   
-    Fixpoint indexHelper (subHash : list nat) (steps : nat) := 
+    (*Fixpoint indexHelper (subHash : list nat) (steps : nat) := 
       match steps with 
       |0 => 0
       |S n => (nth steps subHash 0) + indexHelper subHash n 
@@ -150,23 +149,24 @@ Module Type ExtendedTableAbs.
         end
       end. 
 
-    Definition dropBits (hash : list nat) := dropBitsH hash mask. 
+    Definition dropBits (hash : list nat) := dropBitsH hash mask. *)
 
-    Fixpoint inList (l : list (key * HAMT V)) (k : key) := 
+    Fixpoint inList (l : list (hashKeys * HAMT V)) (k : hashKeys) := 
       match l with 
       | [] => false
       | (k1, v) :: l1 => 
         if (k1 =? k) then true else inList l1 k
       end.
     
-    Fixpoint replace (l : list (key * HAMT V)) (k : key) (v : HAMT V) := 
+    (*Fixpoint replace (l : list (key * HAMT V)) (k : key) (v : HAMT V) := 
         match l with 
         |[] => []
         |(k1, v1) :: l1 => 
             if (k =? k1) then ((k, v) :: l1) else (k1, v1) :: replace l1 k v
             end.
     
-    Fixpoint find (l : list (key * HAMT V)) (k : key)  := 
+    *)
+    Fixpoint find (l : list (hashKeys * HAMT V)) (k : hashKeys)  := 
         match l with 
             |[] => empty 
             |(k1, v) :: l1 => 
@@ -175,21 +175,25 @@ Module Type ExtendedTableAbs.
 
 Unset Guard Checking.
 
-    Program Fixpoint setH (h: list nat) (k : key) (v : V) (t : table) {struct t} : table := 
+    Program Fixpoint setH (h: list hashKeys) (k : key) (v : V) (t : table) {struct t} : table := 
         match t with 
-      |HashMapEntry _  hash k1 v1  => 
-        let hash1 := dropBits hash in 
-        let h := dropBits h in 
-        setH hash k1 v1 (setH h k v (ArrayNode V []))
-      | ArrayNode _  map => 
-        let minKey := getIndex h in 
-        if (inList map minKey) then 
-        ArrayNode V (replace map minKey (setH h k v (find map k))) else 
-        ArrayNode V ((minKey, HashMapEntry V h k v) :: map)
-      | CollisionNode _ hmes => 
+      |HashMapEntry _ hash k1 v1  => 
+        match h with 
+        |[] => CollisionNode V ((k, v) :: (k1, v1) :: [])
+        |_ => setH hash k1 v1 (setH h k v (ListNode V []))
+        end
+      | ListNode _  map => 
+        match h with
+        |[] => empty
+        |k :: t => 
+        if (inList map k) then 
+        ListNode V ((k, (setH t k v (find map k))) :: map) else 
+        ListNode V ((k, HashMapEntry V h k v) :: map)
+        end
+      | CollisionNode _ hmes  => 
         (* call helper function *)
-        CollisionNode V  ((k, v) :: hmes)
-      | Empty _  => 
+        CollisionNode V ((k, v) :: hmes)
+      | Empty _ => 
           HashMapEntry V h k v
       end.
 Set Guard Checking. 
@@ -198,7 +202,7 @@ Set Guard Checking.
         let h := hash k in 
         setH h k v t. 
 
-    Fixpoint findv (hmes : list (nat * V)) (k1 : nat) :=
+    Fixpoint findv (hmes : list (key * V)) (k1 : nat) :=
         match hmes with 
         |[] => default
         |(k, v) :: t => 
@@ -210,7 +214,7 @@ Unset Guard Checking.
       match t with 
       |HashMapEntry _ hash k1 val  => 
         if (k =? k1) then val else default
-      | ArrayNode _ map => 
+      | ListNode _ map => 
         get k (find map k)
       | CollisionNode _ hmes => 
         (* call helper function *)
@@ -220,7 +224,7 @@ Unset Guard Checking.
       end.
 Set Guard Checking.
 
-      Fixpoint mapAL (l:list (key * HAMT V)) : list (HAMT V) :=
+      Fixpoint mapAL (l:list (hashKeys * HAMT V)) : list (HAMT V) :=
         match l with
           | nil => nil
           | cons (k, v) t => v :: mapAL t
@@ -231,19 +235,20 @@ Set Guard Checking.
           | nil => nil
           | cons l1 l2 => app l1 (appList l2)
         end.
+      
 
 Unset Guard Checking.
-        Program Fixpoint elements (t : table) {struct t} : list (key * V) := 
-      match t with 
-      |HashMapEntry _ hash k1 val  => 
-        (k1, val) :: []
-      | ArrayNode _ map => 
-        appList (List.map elements (mapAL map))
-      | CollisionNode _ hmes => 
-        hmes
-      | Empty _ => 
-        []
-        end. 
+      Program Fixpoint elements (t : table) {struct t} : list (key * V) := 
+        match t with 
+        |HashMapEntry _ hash k1 val  => 
+          (k1, val) :: []
+        | ListNode _ map => 
+          appList (List.map elements (mapAL map))
+        | CollisionNode _ hmes => 
+          hmes
+        | Empty _ => 
+          []
+          end. 
 
 Set Guard Checking.
 
@@ -259,54 +264,130 @@ Set Guard Checking.
     Definition Abs (t : table) : partial_map V := 
       map_of_list (elements t).
 
-    Fixpoint allEq (l : list (key * V)) (shift : nat) (test : nat): Prop := 
+    (*Fixpoint noneEq (l : list (key * HAMT V)) : Prop := 
       match l with 
         |[] => True
-        |(k, v) :: t => if ((getIndex (hash k)) =? test) then allEq t shift test else False
-        end.
+        |(k, v) :: t => if inList t k then False else noneEq t
+        end.*)
 
     Definition rep_ok (t : table) : Prop := 
       match t with 
       |HashMapEntry _ hash k1 val  => 
         True
-      | ArrayNode _ map => 
-        NoDup map  (* check all keys are not equal right place and each sub HAMT is a HAMT*)
+      | ListNode _ map => 
+        True
       | CollisionNode _ hmes => 
-        match hmes with 
-        |[] => True
-        |(k, v) :: t => True
-        end
+        True
       | Empty _ => 
         True 
         end.
   
+  (*Theorem noneEq_comm : forall (l: list (key * HAMT V)) (k : key) (h : HAMT V),
+    noneEq ((k, h) :: l) -> noneEq l.
+    Proof. 
+    intros. Admitted.     
+
+  Theorem noneEq_assoc : forall (l: list (key * HAMT V)) (k : key) (k2: key) (h : HAMT V) (h2 : HAMT V),
+    noneEq ((k, h) :: l) -> k <> k2 -> noneEq ((k, h) :: replace l k2 h2).
+    Proof. 
+    intros. induction l.
+    - simpl. trivial.
+    - unfold replace. destruct a. destruct (k2 =? k0) eqn : h1.
+    * simpl. simpl in H. Admitted.   
+
+  Theorem nonEq_replace : forall (l: list (key * HAMT V)) (k : key) (h : HAMT V),
+    noneEq l -> noneEq (replace l k h).
+    Proof.
+    intros. simpl. induction l. 
+    * simpl. trivial.
+    * assert (noneEq l). destruct a. apply noneEq_comm with (k :=k0) (h:=h0) in H. apply H.
+    destruct a. unfold replace. destruct (k =? k0) eqn: h1.    
+    assert (k = k0). admit. rewrite -> H1. simpl. simpl in H. apply H.
+    fold replace. simpl. simpl in H. apply IHl in H0. simpl in H0.  Admitted.      *)
+      
+
   Theorem empty_ok : rep_ok empty.
     Proof.
       intros. simpl. trivial.
       Qed. 
+
   Theorem set_ok : forall (k : key) (v : V) (t : table),
         rep_ok t -> rep_ok (set k v t).
     Proof.
-      intros. simpl. induction t.
+      intros. simpl. unfold set. simpl. induction t. simpl. trivial. 
+      - simpl. destruct (hash k).
+        * simpl. trivial.
+        * simpl. destruct (hash0).
+          ** trivial.   
+          ** destruct (n =? n0) eqn: h1.
+          *** simpl. trivial.
+          *** simpl. trivial.
+      - simpl. destruct (hash k).
+        * trivial.
+        * destruct (inList map n) eqn: h1.
+          ** simpl. trivial.
+          ** simpl. trivial.
       - simpl. trivial.
-      - unfold set. simpl. destruct (getIndex (dropBits (hash k)) =? getIndex hash0) eqn: h1.
-        * destruct (getIndex hash0 =? getIndex (dropBits (hash k))) eqn: h2.
-            ** simpl. destruct (k0 =? getIndex (dropBits (hash k))) eqn: h3.
-                *** admit.
-                *** admit.
-            ** simpl. admit.
-        * simpl. admit.
-    - unfold set. simpl.
-        destruct (inList map (getIndex (hash k))) eqn : h1.
-        * simpl. admit.
-        * simpl. admit.
-    - simpl. trivial.
-    Admitted.                        
-      
- 
+    Qed.                             
+    
   Theorem empty_relate :
       Abs (empty) = empty_map.
     Proof.
       intros. unfold Abs. simpl. trivial.
       Qed.
+
+    Lemma eqNat_refl : forall (n m : nat) (b : bool),
+      (n =? m) = b -> (m =? n) = b.
+      Proof. Admitted.  
+
+    Lemma rep_comm : forall (a : key * HAMT V) (m : list (key * HAMT V)),
+    rep_ok (ListNode V (a :: m)) -> rep_ok (ListNode V m).
+    Proof. Admitted. 
+
+    Lemma rep_comm2 : forall (a : key) (v : V) (m : list (key * V)),
+    rep_ok (CollisionNode V ((a, v) :: m)) -> rep_ok (CollisionNode V m).
+    Proof. Admitted. 
+
+  Theorem bound_relate : forall (t : table) (k : key),
+      rep_ok t ->
+      map_bound k (Abs t) = bound k t.
+  Proof. intros. induction t.
+  - simpl. unfold Abs. unfold elements. simpl. unfold bound. simpl. unfold map_bound. simpl. reflexivity.
+  - unfold Abs. unfold elements. simpl. unfold update. unfold t_update. unfold bound. 
+    unfold elements. unfold bIn. unfold map_bound. destruct (k0 =? k) eqn :h1.
+    * trivial. rewrite -> eqNat_refl with (b:= true). trivial. apply h1.
+    * simpl. rewrite -> eqNat_refl with (b:= false). reflexivity. apply h1.
+  - unfold Abs. unfold bound. induction map.
+    * simpl. unfold map_bound. simpl. reflexivity.
+    * destruct a. unfold elements. admit.
+  - unfold Abs. unfold map_of_list. unfold elements. unfold bound. unfold elements. unfold bIn.
+    unfold update. unfold t_update. unfold map_bound. induction hmes.
+    * simpl. reflexivity.
+    * destruct a. destruct (k =? k0) eqn : h1. rewrite -> eqNat_refl with (b := true). trivial. apply h1.
+    rewrite -> eqNat_refl with (b:= false). apply rep_comm2 in H. apply IHhmes in H. apply H. apply h1.
+    Admitted.     
+
+  Theorem lookup_relate : forall (t : table) (k : key),
+      rep_ok t ->
+      map_find default k (Abs t) = get k t.
+  Proof.
+  intros. simpl. unfold map_find. unfold Abs. induction t.
+   - simpl. unfold ADT_HAMT2.find. simpl. reflexivity.
+   - unfold elements. unfold ADT_HAMT2.find. unfold get. simpl. unfold update. unfold t_update. destruct (k =? k0) eqn: h1.
+   * rewrite -> eqNat_refl with (b:= true). reflexivity. apply h1.
+   * rewrite -> eqNat_refl with (b:= false). simpl. reflexivity. apply h1.
+   - admit.
+   - simpl. unfold ADT_HAMT2.find. unfold map_of_list. unfold update. unfold t_update.
+   unfold findv. induction hmes.
+   * simpl. reflexivity.
+   * destruct a. apply rep_comm2 in H. apply IHhmes in H. destruct (k =? k0) eqn : h1.                
+     rewrite -> eqNat_refl with (b:= true). reflexivity. apply h1. rewrite -> eqNat_refl with (b:= false).
+     apply H. apply h1.
+  Admitted.
+
+  Theorem insert_relate : forall (t : table) (k : key) (v : V),
+  rep_ok t -> map_update k v (Abs t) = Abs (set k v t).
+  Proof. intros. induction t.
+  - simpl. unfold Abs. simpl. unfold update. unfold t_update. unfold map_update. simpl. unfold update. unfold t_update. reflexivity.
+  - simpl. unfold Abs. unfold elements. unfold map_of_list. unfold update. unfold t_update. unfold map_update. unfold update. unfold t_update.       unfold set. unfold setH.                  
     
