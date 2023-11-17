@@ -3,7 +3,6 @@ Require Import Lia.
 Require Import Coq.Strings.String.
 Require Import List.
 Import ListNotations.
-Check [1].
 
 Module Type FiniteMapHash.
 
@@ -64,5 +63,36 @@ Axiom get_empty_default : forall (k1 : K1) (k2 : K2),
   Axiom get_set_other : forall (k1 k1': K1) (k2 k2': K2) (v : V) (t : layeredMap),
       k1 <> k1' -> get k1' k2' (set k1 k2 v t) = get k1' k2' t.
 End LayeredMap.
+
+
+
+
+
+Module Type ValType.
+    Parameter V : Type.
+    Parameter K : Type. 
+    Parameter H : Type. 
+    Parameter default : V.
+    Parameter hash : K -> H. 
+    Parameter map : K -> H -> V. 
+  End ValType.
+
+Module HashMapF (VT : ValType) <: FiniteMapHash.
+  Definition V := VT.V.
+  Definition default := VT.default.
+  Definition K := VT.K.
+  Definition H := VT.H.
+  Definition hash := VT.hash.
+  Definition finiteMap := VT.map.
+  Definition finiteMapHash := K -> V.
+  Definition empty : finiteMapHash :=
+    fun _ => default.
+
+  Definition get (k : K) : V :=
+    finiteMap k (hash k).
+
+  Definition set (k : K) (v : V) : finiteMapHash :=
+    let h := hash k in 
+    fun k => finiteMap k (hash k). 
 
 
