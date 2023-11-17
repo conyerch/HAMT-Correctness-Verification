@@ -18,7 +18,7 @@ Parameter default : V.
 
 Parameter hash : K -> H.
 
-Parameter finiteMap : H -> K -> V. 
+Parameter finiteMap : K -> H -> V. 
 
 Parameter empty : finiteMapHash.
 
@@ -93,6 +93,7 @@ Module HashMapF (VT : ValType) <: FiniteMapHash.
 
   Definition set (k : K) (v : V) : finiteMapHash :=
     let h := hash k in 
-    fun k => finiteMap k (hash k). 
+    fun k => finiteMap k (hash k).
+End HashMapF. 
 
 
