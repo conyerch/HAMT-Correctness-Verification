@@ -18,6 +18,8 @@ Parameter default : V.
 
 Parameter hash : K -> H.
 
+Parameter eq : K -> K -> bool. 
+
 Parameter finiteMap : K -> H -> V. 
 
 Parameter empty : finiteMapHash.
@@ -56,7 +58,7 @@ Parameter get : K1 -> K2 -> layeredMap -> V.
 
 Parameter set : K1 -> K2 -> V -> layeredMap -> layeredMap.
 
-Axiom get_empty_default : forall (k1 : K1) (k2 : K2),
+  Axiom get_empty_default : forall (k1 : K1) (k2 : K2),
       get k1 k2 empty = default.
   Axiom get_set_same : forall (k1 : K1) (k2 : K2) (v : V) (t : layeredMap),
       get k1 k2 (set k1 k2 v t) = v.
@@ -75,6 +77,7 @@ Module Type ValType.
     Parameter default : V.
     Parameter hash : K -> H. 
     Parameter map : K -> H -> V. 
+    Parameter eq: K -> K -> bool. 
   End ValType.
 
 Module HashMapF (VT : ValType) <: FiniteMapHash.
@@ -85,15 +88,37 @@ Module HashMapF (VT : ValType) <: FiniteMapHash.
   Definition hash := VT.hash.
   Definition finiteMap := VT.map.
   Definition finiteMapHash := K -> V.
+  Definition eq := VT.eq. 
   Definition empty : finiteMapHash :=
     fun _ => default.
 
-  Definition get (k : K) : V :=
-    finiteMap k (hash k).
+  Definition get (k : K) (f : finiteMapHash) : V :=
+    f k.
 
-  Definition set (k : K) (v : V) : finiteMapHash :=
+  Definition set (k : K) (v : V) (f : finiteMapHash): finiteMapHash :=
+    fun k' => 
     let h := hash k in 
-    fun k => finiteMap k (hash k).
+    if eq k' k then v else finiteMap k' h.
+
+  Axiom eq_refl : forall (k : K), eq k k = true. 
+
+  Axiom eq_not : forall (k k1: K), k1 <> k -> eq k k1 = false. 
+
+  Theorem get_empty_default : forall (k : K),
+    get k empty = default.
+  Proof.
+    intros. simpl. unfold get. simpl. unfold empty. reflexivity.
+    Qed.        
+  Theorem get_set_same : forall (k : K) (v : V) (t : finiteMapHash),
+    get k (set k v t) = v.
+  Proof. intros. simpl. unfold set. unfold get. simpl. rewrite -> eq_refl. reflexivity.     
+  Qed. 
+  Theorem get_set_other : forall (k k' : K) (v : V) (t : finiteMapHash),
+    k <> k' -> get k' (set k v t) = get k' t. 
+    Proof. intros. unfold set. unfold get. rewrite -> eq_not.
+    - simpl. admit.
+    - apply H0.
+    Admitted.
 End HashMapF. 
 
 
