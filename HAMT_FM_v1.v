@@ -73,10 +73,12 @@ End LayeredMap.
 Module Type ValType.
     Parameter V : Type.
     Parameter K : Type. 
+    Parameter K2 : Type. 
     Parameter H : Type. 
     Parameter default : V.
     Parameter hash : K -> H. 
     Parameter map : K -> H -> V. 
+    Parameter map2 : K2 -> (K -> V). 
     Parameter eq: K -> K -> bool. 
   End ValType.
 
@@ -120,5 +122,24 @@ Module HashMapF (VT : ValType) <: FiniteMapHash.
     - apply H0.
     Admitted.
 End HashMapF. 
+
+(*The main abstract data type takes types K1 K2 V and two finite maps as arguments,
+one of type K1->(finite map K2->V) and one of type K2->V, 
+and is itself a finite map (K1,K2)->V. To look up the key (k1,k2) 
+it looks up k1 in the first finite map. If it returns something, 
+it returns a finite map K2->V, in which case it looks up k2 in that finite map.*)
+
+Module HM2 (VT : ValType) <: LayeredMap.
+  Definition V := VT.V.
+  Definition default := VT.default.
+  Definition K := VT.K.
+  Definition K2 := VT.K2. 
+  Definition H := VT.H.
+  Definition hash := VT.hash.
+  Definition finiteMap1 := VT.map.
+  Definition finiteMap2 := VT.map2. 
+  Definition layeredMap := K -> K2 -> V. 
+  Definition empty : layeredMap :=
+    fun _ _ => default.
 
 
