@@ -129,12 +129,11 @@ Qed.
   `{HAT1 : AlgebraicTable key1 HT2.(table) HT2.(empty)} :
   @AlgebraicTable (prod key1 key2) V default _ _ _ (BranchTable key1 key2 V default).
 Proof.
-  constructor.
-  - intros. destruct k as [k1 k2]. auto.
-  - intros. destruct k as [k1 k2]. simpl.
+  constructor; intros; destruct k as [k1 k2]; auto.
+  - simpl.
     destruct (eqb_eq k1 k1) as [_ Heq1]. rewrite Heq1; auto.
     destruct (eqb_eq k2 k2) as [_ Heq2]. rewrite Heq2; auto.
-  - intros. destruct k as [k1 k2]. destruct k' as [k1' k2']. simpl.
+  - destruct k' as [k1' k2']. simpl.
     destruct (eqb_reflect k1 k1') as [Heq1| Hneq1],
         (eqb_reflect k2 k2') as [Heq2|Hneq2]; subst; auto.
     + exfalso. auto.
