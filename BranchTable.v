@@ -134,7 +134,7 @@ Proof.
     destruct (eqb_eq k1 k1) as [_ Heq1]. rewrite Heq1; auto.
     destruct (eqb_eq k2 k2) as [_ Heq2]. rewrite Heq2; auto.
   - destruct k' as [k1' k2']. simpl.
-    destruct (eqb_reflect k1 k1') as [Heq1| Hneq1],
-        (eqb_reflect k2 k2') as [Heq2|Hneq2]; subst; auto.
+    destruct (eqb_reflect k1 k1') as [?|?],
+        (eqb_reflect k2 k2') as [?|?]; subst; auto.
     + exfalso. auto.
 Qed.
