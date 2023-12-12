@@ -84,7 +84,7 @@ Class Table (key V:Type) (default:V) `{EqDec key} :=
     set : key -> V -> table -> table;
   }.
 
-Class AlgebraicTable (key V:Type) (default:V) `{Table key V} :=
+Class AlgebraicTable (key V:Type) (default:V) `(Table key V) :=
   {
     get_empty_default : forall (k : key), get k empty = default;
     get_set_same : forall (k : key) (v : V) (t : table),
@@ -110,7 +110,7 @@ Proof.
 Qed.
 
 #[export] Instance BranchTable (key1 key2 V : Type) (default:V)
-  `{HT2 : Table key2 V default} `{HT1 : Table key1 HT2.(table) HT2.(empty)}
+  `(HT2 : Table key2 V default) `(HT1 : Table key1 HT2.(table) HT2.(empty))
   : Table (prod key1 key2) V default :=
   {
     table := HT1.(table);
@@ -127,7 +127,7 @@ Qed.
   `{HT2 : Table key2 V default} `{HT1 : Table key1 HT2.(table) HT2.(empty)}
   `{HAT2 : AlgebraicTable key2 V default}
   `{HAT1 : AlgebraicTable key1 HT2.(table) HT2.(empty)} :
-  @AlgebraicTable (prod key1 key2) V default _ _ _ (BranchTable key1 key2 V default).
+  AlgebraicTable (prod key1 key2) V default (BranchTable key1 key2 V default _ _).
 Proof.
   constructor; intros; destruct k as [k1 k2]; auto.
   - simpl.
@@ -138,3 +138,11 @@ Proof.
         (eqb_reflect k2 k2') as [?|?]; subst; auto.
     + exfalso. auto.
 Qed.
+
+Definition natnatboolBranchTable := (BranchTable nat nat bool false (FunTable _ _ _) (FunTable _ _ _)).
+
+Definition natnatboolBranchTableAlgebraic : AlgebraicTable _ _ _ natnatboolBranchTable := BranchTableAlgebraic _ _ _ _.
+
+Check natnatboolBranchTable.
+
+Compute natnatboolBranchTable.(get) (1,3) (natnatboolBranchTable.(set) (1,2) true natnatboolBranchTable.(empty)).
