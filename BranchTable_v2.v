@@ -139,6 +139,53 @@ Proof.
     + exfalso. auto.
 Qed.
 
+Definition HT2 := FunTable nat bool false.
+
+Definition HT1 := FunTable nat HT2.(table) HT2.(empty).
+(*
+Check @BranchTable nat nat bool false _ _ (FunTable _ _ _) _ _ (FunTable _ _ _).
+
+Definition nested := 
+ @BranchTable nat nat bool false _ _ HT2 _ _ HT1.
+ 
+ Check BranchTableAlgebraic.
+ 
+ Set Printing Implicit.
+ Print nested.
+ Print HT1.
+ Print HT2.
+
+ Check eqNat. 
+*)
+ #[export] Instance NestedAlgebraic :
+  @AlgebraicTable (prod nat nat) bool false _ _ _ nested.
+  Proof. apply BranchTableAlgebraic with (H := eqNat) (H0 := eqDecNat) (HT2 := HT2) 
+  (H1 := eqNat) (H2 := eqDecNat)(default0 := false) (H5:= HT2) 
+  (default1 := HT2.(empty)) (H8 := HT1).
+  - apply HT1.
+  - apply FunTableAlgebraic.
+  - apply FunTableAlgebraic.
+Qed.      
+
+(*
+
+#[export] Instance HAMTTable (key1 key2 V : Type) (default:V)
+   `{EqDec key1} `{EqDec key2} 
+  : Table (prod key1 key2) V default :=
+  {
+    (*table := (prod key1 key2) -> V*)
+    empty := fun _ => (fun _ => default);
+    get k t := match k with
+               | (k1,k2) => (t k2) k1
+               end;
+    set k v t := match k with
+                 | (k1,k2) => 
+                 fun k' => if k' =? k2 then 
+                 (fun k'' => if k'' =? k1 then v else (get k2 t) k'')
+                  else t k'
+                  end
+  }.
+
 Class HAMT (key1 key2 V:Type) (default:V) `{EqDec key1} `{EqDec key2}
 `{HT2 : Table key2 V default} `{HT1 : Table key1 HT2.(table) HT2.(empty)} :=
   {
@@ -184,6 +231,6 @@ Class ModularHAMT (key1 key2 V:Type) (default:V) `{HAMT key1 key2 V} :=
     setH k2 k1 v h := (* implement setH by iterating through list of 
                           key2 and applying gets to HT2 *)
                         (* need to modify HT2 to give back HT2 and HT1? *)
-  }.
+  }.*)
 
 
