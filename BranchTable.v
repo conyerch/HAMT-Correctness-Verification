@@ -84,7 +84,7 @@ Class Table (key V:Type) (default:V) `{EqDec key} :=
     set : key -> V -> table -> table;
   }.
 
-Class AlgebraicTable (key V:Type) (default:V) `(Table key V) :=
+Class AlgebraicTable {key V:Type} {default:V} `(HT:Table key V default) :=
   {
     get_empty_default : forall (k : key), get k empty = default;
     get_set_same : forall (k : key) (v : V) (t : table),
@@ -102,14 +102,14 @@ Class AlgebraicTable (key V:Type) (default:V) `(Table key V) :=
   }.
 
 #[export] Instance FunTableAlgebraic (key V:Type) (default:V) `{EqDec key} :
-  @AlgebraicTable key V default _ _ _ (FunTable key V default).
+  AlgebraicTable (FunTable key V default).
 Proof.
   constructor; auto; intros; simpl.
   - destruct (eqb_eq k k) as [_ Heq]. rewrite Heq; auto.
   - destruct (eqb_neq k k') as [Hneq _]. rewrite Hneq; auto.
 Qed.
 
-#[export] Instance BranchTable (key1 key2 V : Type) (default:V)
+#[export] Instance BranchTable {key1 key2 V : Type} {default:V}
   `(HT2 : Table key2 V default) `(HT1 : Table key1 HT2.(table) HT2.(empty))
   : Table (prod key1 key2) V default :=
   {
@@ -123,26 +123,37 @@ Qed.
                  end
   }.
 
-#[export] Instance BranchTableAlgebraic (key1 key2 V : Type) (default:V)
-  `{HT2 : Table key2 V default} `{HT1 : Table key1 HT2.(table) HT2.(empty)}
-  `{HAT2 : AlgebraicTable key2 V default}
-  `{HAT1 : AlgebraicTable key1 HT2.(table) HT2.(empty)} :
-  AlgebraicTable (prod key1 key2) V default (BranchTable key1 key2 V default _ _).
+#[export] Instance BranchTableAlgebraic {key1 key2 V : Type} {default:V}
+  `(HT2 : Table key2 V default) `(HT1 : Table key1 HT2.(table) HT2.(empty))
+  `{HAT2 : @AlgebraicTable key2 V default _ _ HT2}
+  `{HAT1 : @AlgebraicTable key1 HT2.(table) HT2.(empty) _ _ HT1} :
+  @AlgebraicTable (prod key1 key2) V default _ _ (BranchTable HT2 HT1).
 Proof.
-  constructor; intros; destruct k as [k1 k2]; auto.
-  - simpl.
-    destruct (eqb_eq k1 k1) as [_ Heq1]. rewrite Heq1; auto.
-    destruct (eqb_eq k2 k2) as [_ Heq2]. rewrite Heq2; auto.
-  - destruct k' as [k1' k2']. simpl.
-    destruct (eqb_reflect k1 k1') as [?|?],
-        (eqb_reflect k2 k2') as [?|?]; subst; auto.
-    + exfalso. auto.
+  constructor; intros; destruct k as [k1 k2]; simpl.
+  - rewrite HAT1.(get_empty_default), HAT2.(get_empty_default). auto.
+  - rewrite HAT1.(get_set_same), HAT2.(get_set_same). auto.
+  - destruct k' as [k1' k2'].
+    destruct (eqb_reflect k1 k1') as [?|?]; subst.
+    + rewrite HAT1.(get_set_same).
+      destruct (eqb_reflect k2 k2') as [?|?]; subst.
+      * exfalso. auto.
+      * rewrite HAT2.(get_set_other); auto.
+    + rewrite HAT1.(get_set_other); auto.
 Qed.
 
-Definition natnatboolBranchTable := (BranchTable nat nat bool false (FunTable _ _ _) (FunTable _ _ _)).
+Definition natnatboolBranchTable := (BranchTable (FunTable nat bool false) (FunTable nat _ _)).
+Definition natnatboolBranchTableAlgebraic : AlgebraicTable natnatboolBranchTable := BranchTableAlgebraic _ _.
 
-Definition natnatboolBranchTableAlgebraic : AlgebraicTable _ _ _ natnatboolBranchTable := BranchTableAlgebraic _ _ _ _.
+Definition FunBranchTable (key1:Type) `{EqDec key1} {key2 V:Type} {default:V}
+  `(HT2 : Table key2 V default) := (BranchTable HT2 (FunTable _ _ _)).
 
-Check natnatboolBranchTable.
+Definition FunBranchTableAlgebraic {key1 key2 V: Type} {default:V} `{EqDec key1}
+  `(HT2 : Table key2 V default) `{HAT2 : @AlgebraicTable key2 V default _ _ HT2} :
+  AlgebraicTable (FunBranchTable key1 HT2) := BranchTableAlgebraic _ _.
 
-Compute natnatboolBranchTable.(get) (1,3) (natnatboolBranchTable.(set) (1,2) true natnatboolBranchTable.(empty)).
+Example natnatboolBranchTable' := FunBranchTable nat (FunTable nat bool false).
+Example natnatnatboolBranchTable' := FunBranchTable nat (FunBranchTable nat (FunTable nat bool false)).
+Example natnatnatnatboolBranchTable' := FunBranchTable nat (FunBranchTable nat (FunBranchTable nat (FunTable nat bool false))).
+Example natnatnatnatnatboolBranchTable' := FunBranchTable nat (FunBranchTable nat (FunBranchTable nat (FunBranchTable nat (FunTable nat bool false)))).
+
+Compute natnatboolBranchTable'.(get) (1,3) (natnatboolBranchTable'.(set) (1,2) true natnatboolBranchTable'.(empty)).
