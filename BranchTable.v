@@ -6,6 +6,8 @@ From Coq Require Export Bool.Bool.
 (* From Coq Require Export Lists.List. *)
 (* Export ListNotations. *)
 (* From Coq Require Export Permutation. *)
+From Coq Require Export Vectors.Vector.
+Import VectorNotations.
 
 (* From Coq Require Import String.  (* for manual grading *) *)
 (*From VFA Require Import Perm. *)
@@ -51,6 +53,16 @@ Proof.
         constructor; inversion IHk2; auto.
 Qed.
 
+#[export] Instance eqBool : Eq bool :=
+  {
+    eqb := Bool.eqb
+  }.
+
+#[export] Instance eqDecBool : EqDec bool.
+Proof.
+  constructor. intros. destruct k1, k2; constructor; try discriminate; auto.
+Qed.
+
 #[export] Instance eqProd {A B : Type} `{Eq A} `{Eq B} : Eq (prod A B) :=
   {
     eqb x y := match x, y with
@@ -62,7 +74,9 @@ Qed.
 Proof.
   constructor. intros [x1 x2] [y1 y2]. simpl.
   destruct (x1 =? y1) eqn:E1, (x2 =? y2) eqn:E2; constructor.
-  - apply eqb_eq in E1,E2. subst. auto.
+  - Check eqb_eq.
+    apply (eqb_eq x1 y1) in E1. apply (eqb_eq x2 y2) in E2.
+    subst. auto.
   - apply eqb_neq in E2. intro Heq. inversion Heq. auto.
   - apply eqb_neq in E1. intro Heq. inversion Heq. auto.
   - apply eqb_neq in E1,E2. intro Heq. inversion Heq. auto.
@@ -145,7 +159,7 @@ Definition natnatboolBranchTable := (BranchTable (FunTable nat bool false) (FunT
 Definition natnatboolBranchTableAlgebraic : AlgebraicTable natnatboolBranchTable := BranchTableAlgebraic _ _.
 
 Definition FunBranchTable (key1:Type) `{EqDec key1} {key2 V:Type} {default:V}
-  `(HT2 : Table key2 V default) := (BranchTable HT2 (FunTable _ _ _)).
+  `(HT2 : Table key2 V default) := (BranchTable HT2 (FunTable key1 _ _)).
 
 Definition FunBranchTableAlgebraic {key1 key2 V: Type} {default:V} `{EqDec key1}
   `(HT2 : Table key2 V default) `{HAT2 : @AlgebraicTable key2 V default _ _ HT2} :
@@ -157,3 +171,110 @@ Example natnatnatnatboolBranchTable' := FunBranchTable nat (FunBranchTable nat (
 Example natnatnatnatnatboolBranchTable' := FunBranchTable nat (FunBranchTable nat (FunBranchTable nat (FunBranchTable nat (FunTable nat bool false)))).
 
 Compute natnatboolBranchTable'.(get) (1,3) (natnatboolBranchTable'.(set) (1,2) true natnatboolBranchTable'.(empty)).
+
+#[export] Instance eqVector {A:Type} `{HEq:Eq A} {n} : Eq (t A n)
+  := { eqb := Vector.eqb A HEq.(eqb) }.
+
+#[export] Instance eqDecVector {A:Type} `{Heq:Eq A} `{HeqDec:EqDec A} {n} : EqDec (t A n).
+Proof.
+  constructor. intros k1 k2.
+  destruct (k1 =? k2) eqn:Heqn; constructor.
+  - apply (Vector.eqb_eq _ _ eqb_eq _). auto.
+  - simpl in Heqn. intro Hc.
+    rewrite<-(Vector.eqb_eq _ _ eqb_eq _) in Hc.
+    rewrite Hc in Heqn. discriminate.
+Qed.
+
+Example tboolnatboolBranchTable (n:nat) := FunBranchTable (t bool n) (FunTable nat bool false).
+
+#[export] Instance PrecomposeTable {key1 key2 V : Type} {default:V}
+  `{EqDec key1} `{EqDec key2}
+  (f:key1->key2) (HT:Table key2 V default)
+  : Table key1 V default :=
+  {
+    table := HT.(table);
+    empty := HT.(empty);
+    get k t := HT.(get) (f k) t;
+    set k v t := HT.(set) (f k) v t
+  }.
+
+#[export] Instance PrecomposeTableAlgebraic
+  {key1 key2 V : Type} {default:V} `{EqDec key2} `{EqDec key1}
+  (f:key1->key2) (Hf: forall k1 k2, f k1 = f k2 -> k1=k2)
+  `(HT : Table key2 V default) {HAT: AlgebraicTable HT}
+  : AlgebraicTable (PrecomposeTable f HT).
+Proof.
+  constructor.
+  - intros. apply HAT.(get_empty_default).
+  - intros. apply HAT.(get_set_same).
+  - intros ? ? ? ? Hne. apply HAT.(get_set_other).
+    intro. apply Hne. apply Hf. auto.
+Qed.
+
+Fixpoint VectorBranchTable (n:nat) (key V : Type) (default:V) `{EqDec key}
+                         (HT:forall (V:Type) (default:V), Table key V default)
+  : Table (t key (S n)) V default :=
+  match n with
+  | 0 => PrecomposeTable (fun k:t key 1 => hd k) (HT V default)
+  | S n' => PrecomposeTable (fun k:t key (S (S n')) => (hd k, tl k))
+              (BranchTable (VectorBranchTable n' key V default HT) (HT _ _))
+  end.
+
+#[export] Instance VectorBranchTable' (n:nat) (key V : Type) (default:V) `{EqDec key}
+                         (HT:forall (V:Type) (default:V), Table key V default)
+  : Table (t key (S n)) V default := VectorBranchTable n key V default HT.
+
+#[export] Instance VectorBranchTableAlgebraic (n:nat) {key V : Type} {default:V} `{Hdec:EqDec key}
+  (HT:forall (V:Type) (default:V), Table key V default)
+  {HAT:forall (V:Type) (default:V), AlgebraicTable (HT V default)} : AlgebraicTable (VectorBranchTable n key V default HT).
+Proof.
+  induction n.
+  - simpl. apply PrecomposeTableAlgebraic; auto.
+    intros ? ? Heq.
+    rewrite eta. rewrite eta at 1.
+    rewrite (nil_spec (tl k1)). rewrite (nil_spec (tl k2)).
+    rewrite Heq. auto.
+  - constructor.
+    + intros. simpl. rewrite (HAT _ _).(get_empty_default).
+      apply IHn.(get_empty_default).
+    + intros. simpl. rewrite (HAT _ _).(get_set_same).
+      apply IHn.(get_set_same).
+    + intros ? ? ? ? Heq. simpl.
+      destruct (Hdec.(eqb_reflect) (hd k) (hd k')).
+      * rewrite e. rewrite (HAT _ _).(get_set_same).
+        apply IHn.(get_set_other).
+        intro Hc. apply Heq. rewrite eta. rewrite eta at 1.
+        rewrite e. rewrite Hc. auto.
+      * rewrite (HAT _ _).(get_set_other); auto.
+Qed.
+
+Example myvectorbranch := VectorBranchTable 2 nat bool false (fun V default=>FunTable _ V default).
+
+Compute myvectorbranch.(set) [3;2;3] true (myvectorbranch.(set) [1;2;3] true myvectorbranch.(empty)).
+
+Compute myvectorbranch.(set) [3;2;2] true (myvectorbranch.(set) [3;2;3] true (myvectorbranch.(set) [1;2;3] true myvectorbranch.(empty))).
+
+Compute myvectorbranch.(get) [1;2;3] (myvectorbranch.(set) [1;2;3] true myvectorbranch.(empty)).
+
+Definition HashBranchTable {key V B:Type} {n:nat} {default:V}
+  `{EqDec key} `{EqDec B}
+  (hash_f:key -> t B (S n))
+  (HT1:forall (V:Type) (default:V), Table B V default)
+  (HT2:Table key V default) : Table key V default :=
+  PrecomposeTable (fun k:key => (hash_f k,k))
+    (BranchTable HT2 (VectorBranchTable n B _ _ HT1)).
+
+Definition HashBranchTableAlgebraic {key V n B} {default:V}
+  (hash_f:key -> t B (S n))
+  `{EqDec key} `{EqDec B}
+  (HT1:forall (V:Type) (default:V), Table B V default)
+  (HT2:Table key V default)
+  {HAT1:forall (V:Type) (default:V), AlgebraicTable (HT1 V default)}
+  {HAT2:AlgebraicTable HT2}
+  : AlgebraicTable (HashBranchTable hash_f HT1 HT2).
+Proof.
+  apply PrecomposeTableAlgebraic.
+  - intros ? ? Hk. inversion Hk. auto.
+  - apply BranchTableAlgebraic. auto.
+    apply VectorBranchTableAlgebraic. auto.
+Qed.
