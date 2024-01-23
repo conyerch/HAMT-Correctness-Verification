@@ -291,8 +291,8 @@ Definition createEmptyRecord (key V : Type) (n:nat) : MyRecord key V n :=
       array := const (Coq.Lists.List.nil) n;
     |}.
 
-Definition upd_nth {A : Type} {n : nat} (i : Fin.t n) (x : A) (v : t A n) : t A n :=
-      replace v i x.
+Definition upd_nth {A key : Type} {n : nat} (k : key) (f : key -> nat) (H: forall k, f k < n) (x : A) (v : t A n) : t A n :=
+      replace v (Fin.of_nat_lt (H k)) x.
 
 Fixpoint AssociationGet {key V: Type} (k: key) (t: list(key * V)) (default: V) `{EqDec key} : V :=
     match t with 
@@ -314,14 +314,14 @@ Definition nat_to_fin (n : nat) (H : 0 < n) : Fin.t n :=
     get k t :=
       let k' := f k in  
       let fin_k' := Fin.of_nat_lt (Hvalid1 k) in
-      match Vector.nth t.(bitmap key V n) fin_k' with
-      | true => AssociationGet k (Vector.nth t.(array key V n) fin_k') default
+      match Vector.nth_order t.(bitmap key V n) (Hvalid1 k) with
+      | true => AssociationGet k (Vector.nth_order t.(array key V n) (Hvalid1 k)) default
       | _ => default
       end;
     set k v t := 
       let fin_k' := Fin.of_nat_lt (Hvalid1 k) in
-      let new_bitmap := upd_nth fin_k' true t.(bitmap key V n) in 
-      let new_array := upd_nth fin_k' (Coq.Lists.List.cons (k, v) (nth t.(array key V n) fin_k')) t.(array key V n)
+      let new_bitmap := upd_nth k f Hvalid1 true t.(bitmap key V n) in 
+      let new_array := upd_nth k f Hvalid1 (Coq.Lists.List.cons (k, v) (nth t.(array key V n) fin_k')) t.(array key V n)
     in
     {|
       bitmap := new_bitmap;
@@ -329,25 +329,23 @@ Definition nat_to_fin (n : nat) (H : 0 < n) : Fin.t n :=
     |};
   }. 
 
-(* Incomplete Proofs*)
+From Coq Require Export Vectors.Vector.
+Import VectorNotations.
+From Coq Require Export Arith.PeanoNat.
+From Coq Require Export Logic.ProofIrrelevance.
+
 Lemma const_false : forall (key: Type) (k: key) (n : nat) (f: key -> nat) (H : forall k, f k < n), 
 (const false n)[@of_nat_lt (H k)] = false.
 Proof. 
 intros. apply const_nth.
 Qed.  
 
-From Coq Require Export Vectors.Vector.
-Import VectorNotations.
-
 Lemma upd_nth' : forall (key V : Type) (f: key -> nat) (k: key) (n: nat) 
 (v : t V n) (x: V) (H2: forall l : key, f l < n),
-(upd_nth (Fin.of_nat_lt (H2 k)) x v)[@of_nat_lt (H2 k)] = x.
+(upd_nth k f H2 x v)[@of_nat_lt (H2 k)] = x.
 Proof.
 intros. unfold upd_nth. apply nth_order_replace_eq.
 Qed.
-
-From Coq Require Export Arith.PeanoNat.
-From Coq Require Export Logic.ProofIrrelevance.
 
 Lemma nat_to_fin_eq : forall (n m p : nat) (Hn : n < p) (Hm : m < p),
   n = m -> Fin.of_nat_lt Hn = Fin.of_nat_lt Hm.
@@ -361,7 +359,7 @@ Qed.
 Lemma AG_equiv : forall (key V: Type) (f : key -> nat) (n: nat) (t: MyRecord key V n) (l: list (key * V)) (k k': key) (def: V) (v: V) (H: forall k : key, f k < n ) `{EqDec key}, 
 k <> k' -> AssociationGet k' (replace (array key V n t)(of_nat_lt (H k'))(Coq.Lists.List.cons (k, v) l))[@
  of_nat_lt (H k')] def = AssociationGet k' l def.
-Proof. 
+Proof.
   Admitted. 
 
 Lemma upd_AG : forall {key V: Type} (k k1: key) (x: V) (t: list(key * V)) (default: V) `{EqDec key},
@@ -370,15 +368,25 @@ Proof. intros. simpl. inversion H0. destruct (eqb_reflect0 k k1). contradiction.
   Qed.
   
 Lemma upd_nth_neq : forall (key V: Type) (f : key -> nat) (n: nat) (t: MyRecord key V n) (k k': key) (H: forall k : key, f k < n ) `{EqDec key} `{Eq key}, 
-f k <> f k' -> (upd_nth (of_nat_lt (H k)) true (bitmap key V n t))[@of_nat_lt (H k')] = (bitmap key V n t)[@of_nat_lt (H k')].
-Proof.
-Admitted. 
+f k <> f k' -> nth_order (upd_nth k f H true (bitmap key V n t)) (H k') = nth_order (bitmap key V n t) (H k').
+Proof. intros. unfold upd_nth. rewrite -> nth_order_replace_neq. reflexivity. auto. 
+Qed.  
 
-Lemma upd_nth_neq_H : forall (key V: Type) (f : key -> nat) (k: key) (v: V) (n: nat) (t: MyRecord key V n) (k k': key) (H: forall k : key, f k < n ) `{EqDec key} `{Eq key}, 
-  f k <> f k' -> (upd_nth (of_nat_lt (H k)) ((k, v) :: (array key V n t)[@of_nat_lt (H k)])%list
- (array key V n t))[@of_nat_lt (H k')] = (array key V n t)[@of_nat_lt (H k')].
+Lemma upd_nth_neq_H : forall (key V: Type) (f : key -> nat) (k k': key) (v: V) (n: nat) 
+(t: MyRecord key V n) (k k': key) (H: forall k : key, f k < n ) `{EqDec key} `{Eq key}, 
+  f k <> f k' -> nth_order (upd_nth k f H ((k, v) :: (array key V n t)[@of_nat_lt (H k)])%list
+ (array key V n t)) (H k') = nth_order (array key V n t) (H k').
   Proof.
-Admitted. 
+  intros.  unfold upd_nth. rewrite -> nth_order_replace_neq. reflexivity. auto.
+Qed.
+
+Lemma bitmap_false_implies_list_empty : 
+  forall (key V : Type) (n : nat) (t : MyRecord key V n) (f : key -> nat)
+  (k : key) (H: forall k : key, f k < n ),
+   (bitmap key V n t)[@of_nat_lt (H k)] = false ->
+   (array key V n t)[@of_nat_lt (H k)] = Coq.Lists.List.nil.
+   Proof.
+   Admitted. 
 
 #[export] Instance FunHAMTTableAlgebraic (key V:Type) (n: nat) 
 (default:V) (f: key -> nat) (H: forall l : key, f l < n)
@@ -386,26 +394,20 @@ Admitted.
   AlgebraicTable (HAMTTable key V n f default H).
 Proof.
   constructor.
-  - intros. unfold get, empty, HAMTTable. rewrite -> const_false. auto.
-  - intros. unfold get, set, HAMTTable. simpl. rewrite -> upd_nth'. rewrite -> upd_nth'.
+  - intros. unfold get, empty, HAMTTable, createEmptyRecord. simpl. unfold nth_order. rewrite -> const_false. auto.
+  - intros. unfold get, set, HAMTTable. simpl. unfold nth_order. rewrite -> upd_nth'.
+  simpl.
+  rewrite -> upd_nth'.
   simpl. inversion H1. destruct (eqb_reflect0 k k). auto. destruct n0. reflexivity.
   - intros. unfold get, set, HAMTTable. simpl. destruct (Nat.eq_dec (f k) (f k')) as [Heq_nat | Hneq_nat]. 
-  assert (of_nat_lt (H k) = of_nat_lt (H k')). { simpl. apply nat_to_fin_eq. apply Heq_nat. }
-  rewrite -> H3. 
-    * destruct ((bitmap key V n t)[@of_nat_lt (H k')]).
-      ** rewrite -> upd_nth'. simpl. destruct ((array key V n t)[@of_nat_lt (H k')]).
-        *** simpl. unfold upd_nth. simpl. rewrite -> AG_equiv. simpl. reflexivity. apply H2.
-        *** unfold upd_nth. rewrite -> AG_equiv. reflexivity. apply H2.
-      ** simpl. rewrite upd_nth'. simpl. destruct ((array key V n t)[@of_nat_lt (H k')]).
-        *** simpl. unfold upd_nth. rewrite -> AG_equiv. auto. auto.
-        *** simpl. unfold upd_nth. rewrite -> AG_equiv. 
-        (* first destruct implies l must also be empty*) admit. auto.
-    * rewrite -> upd_nth_neq with (H0 := H0). 
-    rewrite -> upd_nth_neq_H with (H0 := H0). reflexivity.
-    repeat auto. auto. auto. auto. auto. auto. auto.
-Admitted.       (* hash not equal case, shouldn't even update the lists *)                            
-      
-    
+  assert (of_nat_lt (H k) = of_nat_lt (H k')). { simpl. apply nat_to_fin_eq. apply Heq_nat. } unfold nth_order.
+  rewrite -> H3. symmetry in H3. rewrite -> H3. rewrite -> upd_nth'. rewrite -> upd_nth'. 
+  destruct ((bitmap key V n t)[@of_nat_lt (H k)]) eqn:myb. admit. 
+  * rewrite -> bitmap_false_implies_list_empty. simpl. admit. apply myb.      
+  * rewrite -> upd_nth_neq with (H0 := H0). 
+  rewrite -> upd_nth_neq_H with (H0 := H0). reflexivity.
+  repeat auto. auto. auto. auto. auto. auto. auto. auto.
+Admitted.
     
     
   
