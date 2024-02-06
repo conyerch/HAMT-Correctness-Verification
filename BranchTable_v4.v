@@ -1,13 +1,14 @@
 (* From Coq Require Import Strings.String.  (* for manual grading *) *)
 From Coq Require Export Bool.Bool.
-(* From Coq Require Export Arith.Arith. *)
+From Coq Require Export Arith.Arith. 
 (* From Coq Require Export Arith.EqNat. *)
 (* From Coq Require Export Lia. *)
-(* From Coq Require Export Lists.List. *)
-(* Export ListNotations. *)
+From Coq Require Export Lists.List. 
+Export ListNotations. 
 (* From Coq Require Export Permutation. *)
-From Coq Require Export Vectors.Vector.
-Import VectorNotations.
+(*From Coq Require Export Vectors.Vector.*)
+(*Import VectorNotations.*)
+
 
 (* From Coq Require Import String.  (* for manual grading *) *)
 (*From VFA Require Import Perm. *)
@@ -96,6 +97,7 @@ Class Table (key V:Type) (default:V) `{EqDec key} :=
     empty : table;
     get : key -> table -> V;
     set : key -> V -> table -> table;
+    (*all : table -> list (key * V)*)
   }.
 
 Class AlgebraicTable {key V:Type} {default:V} `(HT:Table key V default) :=
@@ -104,8 +106,118 @@ Class AlgebraicTable {key V:Type} {default:V} `(HT:Table key V default) :=
     get_set_same : forall (k : key) (v : V) (t : table),
       get k (set k v t) = v;
     get_set_other : forall (k k' : key) (v : V) (t : table),
-      k <> k' -> get k' (set k v t) = get k' t
+      k <> k' -> get k' (set k v t) = get k' t;
+    (*all_set_same : forall (k : key) (v : V) (t : table),
+      In (k, v) (all (set k v t)) = True*)
   }.
+
+Fixpoint const' (n: nat) : list bool := 
+    match n with 
+    |0 => Coq.Lists.List.nil
+    |S n' => Coq.Lists.List.cons false (const' n')
+    end.
+  
+Fixpoint bitCount (i: nat) (bitmap: list bool) : nat :=
+    match i with 
+    |0 => 0
+    |S i' => 
+      match bitmap with 
+      |Coq.Lists.List.nil => 0
+      |Coq.Lists.List.cons hd tl => 
+        match hd with 
+        |true => 1 + bitCount i' tl
+        |false => bitCount i' tl
+        end
+      end
+    end.
+
+  
+Record HAMTRecord (V : Type) (def: V) (HT : Table nat V def) : Type :=
+    {
+      bitmap : list bool;
+      map : HT.(table);
+    }.
+
+Fixpoint replace (l : list bool) (n : nat) := 
+  match l with 
+  |[] => []
+  |b :: t => 
+    match n with 
+    |0 => true :: t
+    |S n' => b :: replace t n'
+    end
+  end.
+
+Fixpoint atIndex (n: nat) (el : list bool) : bool := 
+    match n with 
+    |0 => 
+      match el with 
+      |b :: t => b
+      |_ => false
+      end
+    |S n' => atIndex n' (tl el)
+    end.
+
+Fixpoint setTable (V: Type) (def: V) (v: V) (HT: Table nat V def) (t: table) 
+(t2: table) (p: nat) (n : nat) : table := 
+  match n with 
+  |0 => HT.(set) p v t2
+  |S n' => 
+    let v1 := (HT.(get) n' t) in 
+    match (n' <? p) with 
+    |true => setTable V def v HT t (HT.(set) n' v1 t2) p n'
+    |false => setTable V def v HT t (HT.(set) (S n') v1 t2) p n'
+    end
+  end. 
+  
+#[export] Instance BitTable (B V:Type) (n: nat) (default:V) (f : B -> nat)
+  (HT: Table nat V default) `{EqDec nat} `{EqDec B} (H: forall (b:B), f b < n) 
+  : Table B V default :=
+  {
+    table := HAMTRecord V default HT; 
+    empty := 
+      {|
+        bitmap := const' n;
+        map := HT.(empty);
+      |}; 
+    get k t :=
+      let k' := bitCount (f k) t.(bitmap V default HT) in 
+      get k' t.(map V default HT);
+    set k v t := 
+      let key := f k in 
+      match (atIndex key t.(bitmap V default HT)) with 
+      |true =>
+        let new_map :=  HT.(set) key v t.(map V default HT) in 
+        {|
+        bitmap := t.(bitmap V default HT);
+        map := new_map;
+        |}
+      |false => 
+        let k' := bitCount key t.(bitmap V default HT) in 
+        let new_map := setTable V default v HT t.(map V default HT) HT.(empty) key (bitCount n t.(bitmap V default HT)) in 
+        let new_bitmap := replace t.(bitmap V default HT) key in 
+      {|
+        bitmap := new_bitmap;
+        map := new_map;
+      |}
+      end;
+    (*all t := HT.(all) t.(map V default HT)*)
+  }.
+  
+#[export] Instance BitTableAlgebraic (B: Type) {V : Type} {default:V} (n: nat)
+  (HT: Table nat V default) (f : B -> nat) `{EqDec B} (H1: forall (b:B), f b < n) :
+  AlgebraicTable (BitTable B V n default f HT H1).
+Proof.
+  constructor; auto; intros; simpl.
+  - unfold const'. unfold get. destruct (f k). simpl. unfold empty. unfold get. simpl.        
+
+
+
+
+
+
+
+
 
 #[export] Instance FunTable (key V :Type) (default:V) `{EqDec key} :
   Table key V default :=
@@ -280,6 +392,64 @@ Proof.
     apply VectorBranchTableAlgebraic. auto.
 Qed.
 
+Fixpoint const' (n: nat) : list bool := 
+  match n with 
+  |0 => Coq.Lists.List.nil
+  |S n' => Coq.Lists.List.cons false (const' n')
+  end.
+
+Fixpoint bitCount (i: nat) (bitmap: list bool) : nat :=
+  match i with 
+  |0 => 0
+  |S i' => 
+    match bitmap with 
+    |Coq.Lists.List.nil => 0
+    |Coq.Lists.List.cons hd tl => 
+      match hd with 
+      |true => 1 + bitCount i' tl
+      |false => bitCount i' tl
+      end
+    end
+  end.
+
+Record HAMTRecord (V : Type) (def: V) (HT : Table nat V def) : Type :=
+  {
+    bitmap : list bool;
+    map : HT.(table);
+  }.
+
+#[export] Instance BitTable (V:Type) (n: nat) (default:V) 
+(HT: Table nat V default) `{EqDec nat} (H: forall (l:nat), l < n) 
+: Table key V default :=
+{
+  table := HAMTRecord V default HT; 
+  empty := 
+    {|
+      bitmap := const' n;
+      array := HT.(empty);
+    |}.
+  get k t :=
+    let k' := bitCount k t.(bitmap) in 
+    get k' t.(map)
+  set k v t := 
+    let fin_k' := Fin.of_nat_lt (Hvalid1 k) in
+    let new_bitmap := upd_nth k f Hvalid1 true t.(bitmap key V n) in 
+    let new_array := upd_nth k f Hvalid1 (Coq.Lists.List.cons (k, v) (nth t.(array key V n) fin_k')) t.(array key V n)
+  in
+  {|
+    bitmap := new_bitmap;
+    array := new_array;
+  |};
+}. 
+
+
+
+
+
+
+
+
+
 Record MyRecord (key V : Type) (n: nat) : Type :=
   {
     bitmap : t bool n;
@@ -341,19 +511,7 @@ From Coq Require Export Vectors.Vector.
 Import VectorNotations.
 From Coq Require Export Arith.PeanoNat.
 From Coq Require Export Logic.ProofIrrelevance.
-
-Lemma const_false : forall (key: Type) (k: key) (n : nat) (f: key -> nat) (H : forall k, f k < n), 
-(const false n)[@of_nat_lt (H k)] = false.
-Proof. 
-intros. apply const_nth.
-Qed.  
-
-Lemma upd_nth' : forall (key V : Type) (f: key -> nat) (k: key) (n: nat) 
-(v : t V n) (x: V) (H2: forall l : key, f l < n),
-(upd_nth k f H2 x v)[@of_nat_lt (H2 k)] = x.
-Proof.
-intros. unfold upd_nth. apply nth_order_replace_eq.
-Qed.
+From Coq Require Export Lia.
 
 Lemma nat_to_fin_eq : forall (n m p : nat) (Hn : n < p) (Hm : m < p),
   n = m -> Fin.of_nat_lt Hn = Fin.of_nat_lt Hm.
@@ -363,6 +521,49 @@ Proof.
   f_equal.
   apply proof_irrelevance.
 Qed.
+
+Lemma upd_nth' : forall (key V : Type) (f: key -> nat) (k: key) (n: nat) 
+(v : t V n) (x: V) (H2: forall l : key, f l < n),
+(upd_nth k f H2 x v)[@of_nat_lt (H2 k)] = x.
+Proof.
+intros. unfold upd_nth. apply nth_order_replace_eq.
+Qed.
+
+Require Import Coq.Program.Equality. 
+Lemma nat_to_fin_neq : forall (n m p : nat) (Hn : n < p) (Hm : m < p),
+  n <> m -> Fin.of_nat_lt Hn <> Fin.of_nat_lt Hm.
+Proof. 
+Admitted. 
+
+  (* Two proofs, one if f k = f k0 and one else *)
+Theorem set_preserves_BST : forall (key V : Type) (n : nat) (def: V) (f : key -> nat) `{EqDec key}
+  (H : forall k : key, f k < n) (t : (HAMTTable key V n f def H).(table)) (k : key) (v : V),
+  BST n f H t -> BST n f H (set k v t).
+Proof.
+  intros. apply BST_T. intros. destruct (Nat.eq_dec (f k) (f k0)) 
+  as [Heq_nat | Hneq_nat].
+  - assert (of_nat_lt (H1 k) = of_nat_lt (H1 k0)). 
+  { simpl. apply nat_to_fin_eq. apply Heq_nat. }
+  contradict H3. unfold set. simpl. symmetry in H4. rewrite -> H4.
+  rewrite -> upd_nth'. lia.    
+  - assert (of_nat_lt (H1 k) <> of_nat_lt (H1 k0)). 
+  { simpl. apply nat_to_fin_neq. apply Hneq_nat. }
+  assert ((array key V n (set k v t))[@
+  of_nat_lt (H1 k0)] = (array key V n t)[@of_nat_lt (H1 k0)]).
+   {unfold set. simpl. unfold upd_nth. apply nth_order_replace_neq. lia. }
+   rewrite -> H5. inversion H2. apply const_nth.
+   apply H6. assert ((bitmap key V n (set k v t))[@
+   of_nat_lt (H1 k0)] = (bitmap key V n t)[@of_nat_lt (H1 k0)]). 
+    {unfold set. simpl. unfold upd_nth. apply nth_order_replace_neq. lia. }
+    symmetry in H8.
+    rewrite <- H8 in H3. apply H3.
+Qed. 
+
+Lemma const_false : forall (key: Type) (k: key) (n : nat) (f: key -> nat) (H : forall k, f k < n), 
+(const false n)[@of_nat_lt (H k)] = false.
+Proof. 
+intros. apply const_nth.
+Qed.  
 
 Lemma upd_AG : forall {key V: Type} (k k1: key) (x: V) (t: list(key * V)) (default: V) `{EqDec key},
   k <> k1 -> AssociationGet k (Coq.Lists.List.cons (k1, x) t) default = AssociationGet k t default.
@@ -379,7 +580,7 @@ Lemma upd_nth_neq_H : forall (key V: Type) (f : key -> nat) (k k': key) (v: V) (
   f k <> f k' -> nth_order (upd_nth k f H ((k, v) :: (array key V n t)[@of_nat_lt (H k)])%list
  (array key V n t)) (H k') = nth_order (array key V n t) (H k').
   Proof.
-  intros.  unfold upd_nth. rewrite -> nth_order_replace_neq. reflexivity. auto.
+  intros. unfold upd_nth. rewrite -> nth_order_replace_neq. reflexivity. auto.
 Qed.
 
 Lemma bitmap_false_implies_list_empty : 
@@ -394,7 +595,7 @@ Lemma bitmap_false_implies_list_empty :
     - apply H0 in H1. apply H1.    
   Qed.  
 
-#[export] Instance FunHAMTTableAlgebraic (key V:Type) (n: nat) 
+#[export] Instance HAMTTableAlgebraic (key V:Type) (n: nat) 
 (default:V) (f: key -> nat) (H: forall l : key, f l < n)
 (Hvalid1: forall k, f k < n) `{EqDec key} :
   AlgebraicTable (HAMTTable key V n f default H).
@@ -402,10 +603,9 @@ Proof.
   constructor.
   - intros. unfold get, empty, HAMTTable, createEmptyRecord. 
     simpl. unfold nth_order. rewrite -> const_false. auto.
-  - intros. unfold get, set, HAMTTable. simpl. unfold nth_order. rewrite -> upd_nth'.
-    simpl.
-    rewrite -> upd_nth'.
-    simpl. inversion H1. destruct (eqb_reflect0 k k). auto. destruct n0. reflexivity.
+  - intros. unfold get, set, HAMTTable. simpl. unfold nth_order. 
+    rewrite -> upd_nth'. simpl. rewrite -> upd_nth'. simpl. inversion H1. 
+    destruct (eqb_reflect0 k k). auto. destruct n0. reflexivity.
   - intros. unfold get, set, HAMTTable. simpl. 
     destruct (Nat.eq_dec (f k) (f k')) as [Heq_nat | Hneq_nat]. 
     assert (of_nat_lt (H k) = of_nat_lt (H k')). 
@@ -414,7 +614,8 @@ Proof.
     rewrite -> upd_nth'. rewrite -> upd_nth'. 
     destruct ((bitmap key V n t)[@of_nat_lt (H k)]) eqn:myb.
   * simpl. inversion H1. specialize (eqb_reflect0 k' k) as H_neq. 
-    destruct H_neq as [H_eq | H_false]. symmetry in H_eq. contradiction. reflexivity.
+    destruct H_neq as [H_eq | H_false]. symmetry in H_eq. 
+    contradiction. reflexivity.
   * rewrite -> bitmap_false_implies_list_empty. simpl. 
     inversion H1. specialize (eqb_reflect0 k' k) as H_neq. 
     destruct H_neq as [H_eq | H_false]. symmetry in H_eq.
@@ -437,7 +638,6 @@ Definition HashBranchTable' {key V B:Type} {n:nat} {default:V}
   PrecomposeTable (fun k:key => (hash_f k, k))
     (BranchTable (HAMTTable key V n hash_f2 default H) (VectorBranchTable n B _ _ HT1)).
 
-
 Definition HashBranchTableAlgebraic' {key V n B} {default:V}
   (hash_f:key -> t B (S n))
   (hash_f2: key -> nat)
@@ -453,6 +653,9 @@ Proof.
     * apply FunHAMTTableAlgebraic. apply H.
     * apply VectorBranchTableAlgebraic. apply HAT1.
 Qed.
+
+
+
 
     
   
