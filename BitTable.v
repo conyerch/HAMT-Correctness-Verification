@@ -178,8 +178,12 @@ Fixpoint setTable (V: Type) (def: V) (v: V) (HT: Table nat V def) (t: table)
         map := HT.(empty);
       |}; 
     get k t :=
-      let k' := bitCount (f k) t.(bitmap V default HT) in 
-      get k' t.(map V default HT);
+      match atIndex (f k) t.(bitmap V default HT) with 
+      |false => default
+      |_ => 
+        let k' := bitCount (f k) t.(bitmap V default HT) in 
+        get k' t.(map V default HT)
+        end;
     set k v t := 
       let key := f k in 
       let k' := bitCount key t.(bitmap V default HT) in 
@@ -211,27 +215,42 @@ Proof.
   - simpl. reflexivity. 
   - simpl. reflexivity.
   - simpl. destruct hd. rewrite -> IH. reflexivity. apply IH.
-  Qed.   
+  Qed.
 
+Lemma atIndex_empty : forall (n: nat), atIndex n [] = false.
+Proof. 
+  intros. induction n. simpl. reflexivity. simpl. apply IHn.
+Qed.        
+
+Require Export Lia.
+
+Lemma bitC_neq : forall (n p : nat) (l: list bool), 
+ p <> n -> atIndex n l = true -> atIndex p l = true -> bitCount n l <> bitCount p l.
+Proof. 
+  Admitted. 
+               
 #[export] Instance BitTableAlgebraic (B: Type) {V : Type} {default:V} (n: nat)
   (HT: Table nat V default) (f : B -> nat) `{EqDec B} (H1: forall (b:B), f b < n) 
   `{HAT : @AlgebraicTable nat V default _ _ HT} :
   AlgebraicTable (BitTable B V n default f HT H1).
 Proof.
   constructor; auto; intros; simpl.
-  - apply get_empty_default.
+  - destruct (atIndex (f k) (const_list false n)). 
+  apply get_empty_default. reflexivity. 
   - destruct (atIndex (f k) (bitmap V default HT t)) eqn:H2.
-    * simpl. apply get_set_same.
-    * simpl. rewrite -> bitC_same. apply get_set_same.
-  - destruct (atIndex (f k) (bitmap V default HT t)) eqn:H3.
-    * simpl. apply get_set_other. assert (f k <> f k'). admit.
+    * simpl. rewrite -> H2. simpl. apply get_set_same.
+    * simpl. rewrite -> bitC_same. 
+    assert (atIndex (f k) (replace (bitmap V default HT t) (f k)) = true).
     admit.
-    * simpl. rewrite -> bitC_same. apply get_set_other.   
-  
-  
-  assert (forall (l p: nat), bitCount l (const_list false p) = 0).
-    * intros. unfold const_list. induction (repeat false). unfold repeat. induction p. 
-    unfold bitCount. simpl. destruct l. auto. auto. 
-    unfold bitCount. destruct l. reflexivity. fold bitCount. apply IHp.  simpl. 
-    induction n0. reflexivity.
-    destruct (const' p). reflexivity.  
+    rewrite -> H3. apply get_set_same.
+  - assert (f k <> f k'). admit. destruct (atIndex (f k) (bitmap V default HT t)) eqn:H4.
+    * simpl. destruct (atIndex (f k') (bitmap V default HT t)) eqn:H5.
+      **  apply get_set_other. apply bitC_neq. lia. apply H4. apply H5.  
+      ** reflexivity.
+    * simpl. destruct (atIndex (f k') (bitmap V default HT t)) eqn:H5.
+      ** (* Contradiction, since we stated*) 
+      assert (atIndex (f k') (replace (bitmap V default HT t) (f k)) = true). admit.
+      rewrite -> H6. admit.
+      ** assert (atIndex (f k') (replace (bitmap V default HT t) (f k)) = false). admit.
+      rewrite -> H6. reflexivity.
+  Admitted. 
