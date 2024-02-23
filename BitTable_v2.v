@@ -30,6 +30,16 @@ Fixpoint atIndex (n: nat) (el : list bool) : bool :=
     |S n' => atIndex n' (tl el)
     end.
 
+Fixpoint atIndexV {V: Type} (n: nat) (def: V) (el : list V) : V := 
+  match n with 
+  |0 => 
+    match el with 
+    |v :: t => v
+    |_ => def
+    end
+  |S n' => atIndexV n' def (tl el)
+  end.
+
 Fixpoint replace (l : list bool) (n : nat) := 
   match l with 
   |[] => 
@@ -43,6 +53,17 @@ Fixpoint replace (l : list bool) (n : nat) :=
     |S n' => b :: replace t n'
     end
   end.
+
+Fixpoint insert' {V: Type} (l : list V) (n : nat) (v: V) := 
+  match l with 
+  |[] => [v]
+  |b :: t => 
+    match n with 
+    |0 => v :: b :: t
+    |S n' => b :: insert' t n' v 
+    end
+  end.
+    
 
 Fixpoint bitCount (i: nat) (bitmap: list bool) : nat :=
   match i with 
@@ -151,7 +172,7 @@ Class AlgebraicTable {key V:Type} {default:V} `(HT:Table key V default) :=
       In (k, v) (all (set k v t)) = True*)
   }.
 
-Class Bitmap (V: Type) (default: V) `{EqDec nat} `{Table nat V default} := 
+Class Bitmap (V: Type) (default: V) `{EqDec nat} := 
   {
     table' : Type;
     empty' : table';
@@ -171,6 +192,15 @@ Class AlgebraicBitmap {V:Type} {default:V} `(HT:Bitmap V default) :=
     }.
 
 Definition key := nat.
+
+#[export] Instance HamtTable {V : Type} (default : V) 
+ `{EqDec nat} : Bitmap V default :=
+  {
+    table' := list V;
+    empty' := [];
+    get' k t := atIndexV k default t;
+    insert k v t := insert' t k v;
+  }.
 
 Class Bitmap' (n: nat) (def: nat) `{EqDec nat} := 
   {
@@ -360,7 +390,7 @@ Theorem example : forall n m : nat, n <> m -> n < m \/ n > m.
 #[export] Instance BitTableAlgebraic (B: Type) {V : Type} {default:V} (n: nat)
   `(HT: Bitmap V default) (f : B -> nat) `{EqDec B} (HF: forall (b:B), f b < n) 
   (HH: forall (k k' : B), k <> k' -> f k <> f k')
-  `{HAT: @AlgebraicBitmap V default _ _ _ _ _ HT} 
+  `{HAT: @AlgebraicBitmap V default _ _ HT} 
   (HT1: Bitmap' n 0) `{HAT1: @AlgebraicBitmap' n 0 _ _ _ } :
   AlgebraicTable (BitTable B V n default f HT HF HH HT1).
 Proof.
@@ -371,17 +401,17 @@ Proof.
     * simpl. rewrite get_set_same''. assert ((count'' (f k)
     (set'' (f k) (bitmap V n default HT HT1 t))) = count'' (f k) (bitmap V n default HT HT1 t)).
     apply count_lt. apply Nat.leb_le. trivial.  
-    rewrite H7. apply get_insert_same.
-  - assert (f k <> f k'). apply HH. apply H6. destruct (get'' (f k) (bitmap V n default HT HT1 t)) eqn:H8.
+    rewrite H3. apply get_insert_same.
+  - assert (f k <> f k'). apply HH. apply H3. destruct (get'' (f k) (bitmap V n default HT HT1 t)) eqn:H8.
     * simpl. destruct (get'' (f k') (bitmap V n default HT HT1 t)) eqn:H9.
-      ** assert (f k < f k' \/ f k > f k'). apply example. apply H7. destruct H10.
+      ** assert (f k < f k' \/ f k > f k'). apply example. apply H4. destruct H5.
       apply insertion_same_lt. apply insertion_same_lt.
       ** reflexivity.
     * simpl. destruct (get'' (f k') (bitmap V n default HT HT1 t)) eqn:H9.
       ** simpl. rewrite get_set_other''. rewrite H9. assert (f k < f k' \/ f k > f k'). 
-      apply example. apply H7. destruct H10. rewrite count_gt. 
+      apply example. apply H4. destruct H5. rewrite count_gt. 
       apply insertion_same_gt. apply Nat.leb_le. apply count_less.
-      apply Nat.ltb_lt. apply H10. apply Nat.ltb_lt. apply H10. apply H8.
+      apply Nat.ltb_lt. apply H5. apply Nat.ltb_lt. apply H5. apply H8.
       rewrite count_lt. apply insertion_same_lt. apply Nat.leb_le. lia. lia.  
       ** rewrite get_set_other''. rewrite H9. reflexivity. lia. 
 Qed. 
