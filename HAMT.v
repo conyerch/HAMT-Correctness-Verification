@@ -21,6 +21,7 @@ Class Eq A :=
   {
     eqb: A -> A -> bool
   }.
+  
 Notation "x =? y" := (eqb x y) (at level 70).
 
 Class EqDec A {H:Eq A} :=
@@ -97,7 +98,6 @@ Class Table (key V:Type) (default:V) `{EqDec key} :=
     empty : table;
     get : key -> table -> V;
     set : key -> V -> table -> table;
-    (*all : table -> list (key * V)*)
   }.
 
 Class AlgebraicTable {key V:Type} {default:V} `(HT:Table key V default) :=
@@ -286,10 +286,7 @@ Proof.
     apply VectorBranchTableAlgebraic. auto.
 Qed.
 
-
-
 (* Bit Table Implementation *)
-
 
 From Coq Require Export Lists.List. 
 Export ListNotations. 
@@ -394,7 +391,7 @@ Class AlgebraicShiftTable {V:Type} {default:V} `(HT:ShiftTable V default) :=
         k' <=? k = true -> get' (S k) (insert false k' v t) = get' k t;
     }.
 
-#[export] Instance HamtTable 
+#[export] Instance SparseTable 
  `{EqDec nat} : forall (V: Type) (def: V), ShiftTable V def :=
   {
     table' := list V;
@@ -403,12 +400,12 @@ Class AlgebraicShiftTable {V:Type} {default:V} `(HT:ShiftTable V default) :=
     insert b k v t := insert' b t k v;
   }.
 
-Axiom key_within_bounds : forall {V: Type} (default: V) `{EqDec nat} (k: key) (t: (HamtTable V default).(table')), k > length t -> False.
+Axiom key_within_bounds : forall {V: Type} (default: V) `{EqDec nat} (k: key) (t: (SparseTable V default).(table')), k > length t -> False.
 
 Require Import Lia.
 
 #[export] Instance ShiftListAlgebraic {V: Type} (def: V) `{EqDec nat}:
-  AlgebraicShiftTable (HamtTable V def).
+  AlgebraicShiftTable (SparseTable V def).
 Proof.
   constructor; auto; intros; simpl.
   - induction k. simpl. reflexivity. simpl. reflexivity.
@@ -460,12 +457,12 @@ Class AlgebraicBitmap (n: nat) (d: nat) `(HT:Bitmap n d) :=
       get'' k (set'' k t) = true;
     get_set_other'' : forall (k k': nat) (t : table''), 
       k <> k' -> get'' k (set'' k' t) = get'' k t;
-    count_lt : forall (k k': nat) (t : table''), 
+    count_lt_same : forall (k k': nat) (t : table''), 
       k <=? k' = true -> count'' k (set'' k' t) = count'' k t;
     count_gt : forall (k k': nat) (t : table''), 
       k' <? k = true -> get'' k' t = false -> 
       count'' k (set'' k' t) = S(count'' k t);
-    count_less : forall (k k': nat) (t : table''), 
+    count_lt : forall (k k': nat) (t : table''), 
       k <? k' = true -> count'' k t <= count'' k' t;
     count_ne : forall (k k': nat) (t : table''), 
       k > k' -> get'' k' t = true -> count'' k t > count'' k' t
@@ -616,36 +613,36 @@ Theorem ne_implies : forall n m : nat, n <> m -> n < m \/ n > m.
       - right. assumption.
 Qed.
 
-#[export] Instance BitTable (B:Type) (n: nat) (f : B -> nat)
+#[export] Instance HamtNode (B:Type) (n: nat) (f : B -> nat)
  `{EqDec B} (H: forall (b:B), f b < n) 
   (H2: forall (k k' : B), k <> k' -> f k <> f k')
   (HT1: Bitmap n 0) : forall (V: Type) (default: V), Table B V default :=
   {
-    table := HAMTRecord V n default (HamtTable V default) HT1; 
+    table := HAMTRecord V n default (SparseTable V default) HT1; 
     empty := 
       {|
         bitmap := HT1.(empty'');
-        map := (HamtTable V default).(empty');
+        map := (SparseTable V default).(empty');
       |}; 
     get k t :=
-      match get'' (f k) t.(bitmap V n default (HamtTable V default) HT1) with 
+      match get'' (f k) t.(bitmap V n default (SparseTable V default) HT1) with 
       |false => default
       |_ => 
-        let k' := count'' (f k) t.(bitmap V n default (HamtTable V default) HT1) in 
-        get' k' t.(map V n default (HamtTable V default) HT1)
+        let k' := count'' (f k) t.(bitmap V n default (SparseTable V default) HT1) in 
+        get' k' t.(map V n default (SparseTable V default) HT1)
         end;
     set k v t := 
-      let k' := count'' (f k) t.(bitmap V n default (HamtTable V default) HT1) in 
-      match (get'' (f k) t.(bitmap V n default (HamtTable V default) HT1)) with 
+      let k' := count'' (f k) t.(bitmap V n default (SparseTable V default) HT1) in 
+      match (get'' (f k) t.(bitmap V n default (SparseTable V default) HT1)) with 
       |true =>
-        let new_map :=  insert true k' v t.(map V n default (HamtTable V default) HT1) in 
+        let new_map :=  insert true k' v t.(map V n default (SparseTable V default) HT1) in 
         {|
-        bitmap := t.(bitmap V n default (HamtTable V default) HT1);
+        bitmap := t.(bitmap V n default (SparseTable V default) HT1);
         map := new_map;
         |}
       |_ => 
-        let new_map := insert false k' v t.(map V n default (HamtTable V default) HT1) in
-        let new_bitmap := set'' (f k) t.(bitmap V n default (HamtTable V default) HT1) in 
+        let new_map := insert false k' v t.(map V n default (SparseTable V default) HT1) in
+        let new_bitmap := set'' (f k) t.(bitmap V n default (SparseTable V default) HT1) in 
       {|
         bitmap := new_bitmap;
         map := new_map;
@@ -653,52 +650,50 @@ Qed.
       end;
   }.
 
-#[export] Instance BitTableAlgebraic (B: Type) {V : Type} {default:V} (n: nat)
+#[export] Instance HamtNodeAlgebraic (B: Type) {V : Type} {default:V} (n: nat)
   (f : B -> nat) `{EqDec B} (HF: forall (b:B), f b < n) 
   (HH: forall (k k' : B), k <> k' -> f k <> f k')
-  `{HAT: @AlgebraicShiftTable V default _ _ (HamtTable V default)} 
+  `{HAT: @AlgebraicShiftTable V default _ _ (SparseTable V default)} 
   (HT1: Bitmap n 0) `{HAT1: @AlgebraicBitmap n 0 _ _ _ } :
-  AlgebraicTable ((BitTable B n f HF HH HT1) V default).
+  AlgebraicTable ((HamtNode B n f HF HH HT1) V default).
 Proof.
   inversion HAT. simpl in get_insert_same0. simpl in insertion_same0.
   constructor; auto; intros; simpl. 
   - rewrite get_empty_default''. reflexivity.  
-  - destruct (get'' (f k) (bitmap V n default (HamtTable V default) HT1 t)) eqn:H6.
+  - destruct (get'' (f k) (bitmap V n default (SparseTable V default) HT1 t)) eqn:H6.
     * simpl. rewrite -> H6. apply get_insert_same0.
     * simpl. rewrite get_set_same''. assert ((count'' (f k)
-      (set'' (f k) (bitmap V n default (HamtTable V default) HT1 t))) = 
-      count'' (f k) (bitmap V n default (HamtTable V default) HT1 t)).
-      apply count_lt. apply Nat.leb_le. trivial.  
+      (set'' (f k) (bitmap V n default (SparseTable V default) HT1 t))) = 
+      count'' (f k) (bitmap V n default (SparseTable V default) HT1 t)).
+      apply count_lt_same. apply Nat.leb_le. trivial.  
       rewrite H1. apply get_insert_same0.
   - assert (f k <> f k'). apply HH. apply H1. 
-    destruct (get'' (f k) (bitmap V n default (HamtTable V default) HT1 t)) eqn:H8.
-    * simpl. destruct (get'' (f k') (bitmap V n default (HamtTable V default) HT1 t)) eqn:H9.
+    destruct (get'' (f k) (bitmap V n default (SparseTable V default) HT1 t)) eqn:H8.
+    * simpl. destruct (get'' (f k') (bitmap V n default (SparseTable V default) HT1 t)) eqn:H9.
     (* is both are set already, counts do not change, and get/set is same*)
       ** rewrite insertion_same0. reflexivity. 
         assert (f k < f k' \/ f k > f k'). 
         apply ne_implies. apply H2. destruct H3.
-        assert (count'' (f k') (bitmap V n default (HamtTable V default) HT1 t) >
-        count'' (f k) (bitmap V n default (HamtTable V default) HT1 t)). apply count_ne. lia.
+        assert (count'' (f k') (bitmap V n default (SparseTable V default) HT1 t) >
+        count'' (f k) (bitmap V n default (SparseTable V default) HT1 t)). apply count_ne. lia.
         apply H8. lia. 
-        assert (count'' (f k') (bitmap V n default (HamtTable V default) HT1 t) <
-        count'' (f k) (bitmap V n default (HamtTable V default) HT1 t)). apply count_ne. lia.
+        assert (count'' (f k') (bitmap V n default (SparseTable V default) HT1 t) <
+        count'' (f k) (bitmap V n default (SparseTable V default) HT1 t)). apply count_ne. lia.
         apply H9. lia.
       ** reflexivity.
-    * simpl. destruct (get'' (f k') (bitmap V n default (HamtTable V default) HT1 t)) eqn:H9.
+    * simpl. destruct (get'' (f k') (bitmap V n default (SparseTable V default) HT1 t)) eqn:H9.
       ** simpl. rewrite get_set_other''. rewrite H9. assert (f k < f k' \/ f k > f k'). 
       apply ne_implies. apply H2. destruct H3. rewrite count_gt. 
-      apply insertion_same_gt0. apply Nat.leb_le. apply count_less.
+      apply insertion_same_gt0. apply Nat.leb_le. apply count_lt.
       apply Nat.ltb_lt. apply H3. apply Nat.ltb_lt. apply H3. apply H8.
-      rewrite count_lt. apply insertion_same_lt0. 
-      assert (count'' (f k') (bitmap V n default (HamtTable V default) HT1 t) <
-      count'' (f k) (bitmap V n default (HamtTable V default) HT1 t)). apply count_ne. lia.
+      rewrite count_lt_same. apply insertion_same_lt0. 
+      assert (count'' (f k') (bitmap V n default (SparseTable V default) HT1 t) <
+      count'' (f k) (bitmap V n default (SparseTable V default) HT1 t)). apply count_ne. lia.
       apply H9. apply Nat.leb_gt. lia. 
       (* show that when get is true for the samller, the larger count is 
       always greater *) apply Nat.leb_le. lia. lia.  
       ** rewrite get_set_other''. rewrite H9. reflexivity. lia. 
 Qed.
-
-Check BitTable. 
 
 (* Drop in BitTable to bottom layer of HAMT Table to get full HAMT representation *)
 
@@ -710,7 +705,7 @@ Definition HashBranchTable' {key V B:Type} {n:nat} {default:V}
   (HT2:Table key V default) : Table key V default :=
   PrecomposeTable (fun k:key => (hash_f k, k))
     (BranchTable HT2
-    (VectorBranchTable n B _ _ (BitTable B n f HF HH (BitmapList n HK)))).
+    (VectorBranchTable n B _ _ (HamtNode B n f HF HH (BitmapList n HK)))).
 
 Definition HashBranchTableAlgebraic' {key V B:Type} {n:nat} {default:V}
 `{EqDec key} `{EqDec B}
@@ -724,5 +719,5 @@ Proof.
   apply PrecomposeTableAlgebraic.
   - intros ? ? Hk. inversion Hk. auto.
   - apply BranchTableAlgebraic. auto.
-    apply VectorBranchTableAlgebraic. intros. apply (BitTableAlgebraic B n f HF HH (BitmapList n HK)).
+    apply VectorBranchTableAlgebraic. intros. apply (HamtNodeAlgebraic B n f HF HH (BitmapList n HK)).
 Qed.
